@@ -1,18 +1,19 @@
 ---
 name: redteam-engagement
-description: Plan and document an authorized red team engagement. Use when scoping a penetration test, checking whether a target or technique is in scope, structuring recon through reporting, or turning findings into a client-ready report with MITRE ATT&CK mapping.
+description: Plan, execute, and track a multi-stage authorized red team engagement. Use when scoping a penetration test, gating each target or technique before action, moving between recon, access, privilege escalation, lateral movement and reporting stages, resuming a paused engagement, or turning findings into a client-ready ATT&CK-mapped report.
 ---
 
 # redteam-engagement
 
-把授权红队评估拆成可执行、可留证、可交付的流程，并在每次动目标之前先过授权闸门。
+把授权红队评估拆成**有状态、可暂停、可恢复、可审计**的多阶段流程：每次动目标前过授权闸门，每个阶段结束必须留下产物才能推进。
 
 ## 何时使用
 
-- 拿到一个新项目，需要确认范围、时间窗口、禁止手法
+- 新项目启动，需要确认范围、时间窗口、禁止手法
 - 准备对某个域名 / IP / 网段执行动作，想先确认是否越界
+- 项目跨天、多人协作，需要交接当前进度和下一步
+- 从侦察推进到访问、提权、横向，需要判断能否进入下一阶段
 - 需要把散落的发现整理成客户能读的报告
-- 复盘一次评估：哪些阶段做了、证据是否齐、结论是否站得住
 
 ## 前置条件（缺一不可）
 
@@ -22,26 +23,81 @@ description: Plan and document an authorized red team engagement. Use when scopi
 
 没有书面授权就不进入执行阶段，只做方案设计。
 
-## 流程
+## 多阶段模型
 
-完整说明见 [references/phases.md](../../references/phases.md)，七个阶段：
+七个执行阶段加一个关闭态。完整动作说明见 [references/phases.md](../../references/phases.md)。
 
-| 阶段 | 核心产出 |
-| --- | --- |
-| 1. 范围与规则 | ROE、目标清单、排除项、时间窗口 |
-| 2. 外部侦察 | 资产面、技术栈、公开信息、攻击面假设 |
-| 3. 初始访问 | 已验证的入口、复现步骤、影响初判 |
-| 4. 权限提升 | 当前权限、可提升路径、证据 |
-| 5. 横向移动 | 可达资产、凭据/信任关系、边界 |
-| 6. 目标达成 | 与演练目标对应的证明（不扩大范围） |
-| 7. 清理与报告 | 清理记录、时间线、发现、修复建议 |
+| ID | 阶段 | 进入条件 | 必留证据 | 产物 | 退出条件 |
+| --- | --- | --- | --- | --- | --- |
+| `scope` | 范围与规则 | 授权文件在手 | ROE、目标/排除项/窗口 | `01-scope.md` | 目标无歧义、窗口确认 |
+| `recon` | 外部侦察 | scope 完成 | 数据来源、采集时间、置信度 | `02-recon.md` | 攻击面假设已排序 |
+| `access` | 初始访问 | 动作前 scope_check 为 ALLOW | 请求/响应、时间线 | `03-access.md` | 至少一个入口可复现 |
+| `privesc` | 权限提升 | 已获得立足点 | 身份前后对比、命令输出 | `04-privesc.md` | 权限结论明确 |
+| `lateral` | 横向移动 | 新目标在授权范围内 | 路径图、登录记录 | `05-lateral.md` | 到达目标或路径阻断 |
+| `objective` | 目标达成 | 横向结果明确 | 目标达成证明 | `06-objective.md` | 目标项均有结论 |
+| `cleanup` | 清理与报告 | 目标阶段结束 | 清理确认、报告 | `07-cleanup-report.md` | 清理完成且报告交付 |
+| `closed` | 关闭 | 报告交付 | 数据销毁记录 | `08-closed.md` | 数据按约定处理完毕 |
+
+## 阶段推进规则
+
+1. **单阶段推进**：未满足当前阶段退出条件，不进入下一阶段；不要为了赶进度跳步。
+2. **阶段闸门**：进入 `access`、`privesc`、`lateral`、`objective` 前，对即将操作的目标和手法各跑一次 `scope_check`，用 `--json` 保存结果作为证据。
+3. **允许回退**：横向移动发现新入口时退回 `access`，提权失败退回 `access` 重新选点；回退写入 `regressions`，不隐藏。
+4. **允许跳过**：客户只要求部分阶段时写入 `skipped`（阶段 + 原因 + 授权方确认方式）；`scope` 与 `cleanup` 不可跳过。
+5. **可并行**：多个独立目标可并行推进，但 `state.json` 中每个目标单独记录 `stage`。
+6. **阻断即停**：触发停止条件时把 `status` 置为 `blocked`，记录触发点并联系授权方，不自行继续。
+
+## 状态文件
+
+在私有工作区维护 `.engagement/state.json`，不要提交到公开仓库：
+
+```json
+{
+  "engagement": "示例项目",
+  "updated_at": "2026-11-05T10:00:00+08:00",
+  "status": "in_progress",
+  "targets": [
+    {
+      "target": "api.example.com",
+      "stage": "access",
+      "status": "in_progress",
+      "scope_checked_at": "2026-11-05T09:58:00+08:00",
+      "artifact": "03-access.md"
+    },
+    {
+      "target": "10.10.0.8",
+      "stage": "recon",
+      "status": "pending"
+    }
+  ],
+  "artifacts": ["01-scope.md", "02-recon.md", "03-access.md"],
+  "skipped": [],
+  "regressions": [],
+  "blockers": []
+}
+```
+
+字段约定：
+
+- `status`：`pending` / `in_progress` / `done` / `blocked`
+- `skipped`：`[{"stage": "lateral", "reason": "...", "approved_by": "..."}]`
+- `regressions`：`[{"from": "lateral", "to": "access", "reason": "..."}]`
+- `blockers`：`[{"stage": "...", "reason": "...", "reported_at": "..."}]`
+
+## 每次推进的执行循环
+
+1. 读取 `state.json`，确认当前目标与阶段；无状态文件则从 `scope` 初始化
+2. 判断本次动作是否会接触目标；会接触就先跑 `scope_check`
+3. 执行本阶段动作，同步记录请求/响应、时间、账号
+4. 写阶段产物，更新 `state.json`（阶段、状态、证据路径）
+5. 对照退出条件自检：满足则推进，不满足则留在当前阶段并写明缺口
 
 ## 工具
 
 ### 授权闸门
 
 ```bash
-python scripts/scope_check.py --scope scope.json --target api.example.com --technique web
+python scripts/scope_check.py --scope scope.json --target api.example.com --technique web --json
 ```
 
 - 校验目标是否在 `targets` 内、是否命中 `excludes`、当前时间是否在 `window` 内、手法是否被允许
@@ -59,9 +115,12 @@ python scripts/report_builder.py --findings findings.json --out report.md
 
 ## 输出契约
 
-- 范围结论必须带**依据**：命中了哪条 targets、被哪条 excludes 排除、窗口起止
-- 发现必须带**证据**：请求/响应、时间、账号、影响范围，缺证据的发现降级为"待验证"
-- 报告不写未复现的推测；不确定的内容放"待确认"小节
+- **阶段产物**：每个阶段至少一份 Markdown，包含时间、目标、动作、结果、证据位置、遗留问题
+- **范围结论**：必须带依据（命中的 targets 规则、排除项、窗口起止）
+- **发现**：必须带证据（请求/响应、时间、账号、影响范围）；缺证据降级为"待验证"
+- **状态同步**：动作完成后立即更新 `state.json`，不事后补记
+- **失败也记录**：被阻断、被检测、无结果的阶段同样写产物，不删空记录
+- 报告不写未复现的推测；不确定内容放"待确认"小节
 - 不记录明文凭据；必要时只保留前后各 4 位
 
 ## 红线
@@ -76,4 +135,5 @@ python scripts/report_builder.py --findings findings.json --out report.md
 - `*.example.com` 只匹配子域名，不匹配 `example.com` 本身，范围要分别写
 - 时间窗口按带时区的 ISO 8601 解析，跨时区项目务必写偏移量
 - 排除项优先级高于目标清单：同时命中时一律拒绝
+- 阶段回退后，旧阶段的结论要标记失效，不要继续引用
 - 报告里的 ATT&CK ID 必须和实际手法对应，不要为了好看硬凑
