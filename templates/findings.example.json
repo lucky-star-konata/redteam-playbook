@@ -1,0 +1,61 @@
+{
+  "engagement": {
+    "name": "某行业客户红队评估报告",
+    "client": "某行业客户（脱敏）",
+    "window": "2026-11-01 ~ 2026-11-10",
+    "authorized_by": "客户信息安全部（SOW-2026-001）",
+    "tester": "评估执行方",
+    "methodology": "依据七阶段流程执行：范围确认、外部侦察、初始访问、权限提升、横向移动、目标达成、清理与报告。",
+    "scope": [
+      "example.com 及 *.example.com（pay.example.com 除外）",
+      "10.10.0.0/24 内网网段（10.10.0.5 除外）"
+    ]
+  },
+  "findings": [
+    {
+      "id": "F-001",
+      "title": "登录接口存在 SQL 注入",
+      "severity": "high",
+      "cvss": "8.1",
+      "status": "confirmed",
+      "asset": "https://app.example.com/api/login",
+      "mitre": ["T1190"],
+      "description": "登录接口的 username 参数未做参数化处理，可直接拼接进 SQL 查询，导致可绕过认证并读取数据库内容。",
+      "impact": "攻击者可在未授权情况下登录后台，并读取用户表中的账号与手机号等敏感字段。",
+      "evidence": [
+        "POST /api/login HTTP/1.1\nHost: app.example.com\nContent-Type: application/json\n\n{\"username\":\"admin' OR '1'='1\",\"password\":\"x\"}",
+        "HTTP/1.1 200 OK\n\n{\"code\":0,\"role\":\"admin\"}  （返回值已脱敏）"
+      ],
+      "remediation": "改用参数化查询或 ORM 绑定变量；对登录失败次数做限制；对返回信息做统一错误提示。"
+    },
+    {
+      "id": "F-002",
+      "title": "内网共享目录允许匿名读取",
+      "severity": "medium",
+      "cvss": "6.5",
+      "status": "confirmed",
+      "asset": "\\\\10.10.0.21\\shared",
+      "mitre": ["T1135"],
+      "description": "文件服务器共享目录未启用认证，匿名用户可以列出并读取目录内容。",
+      "impact": "内部文档、运维脚本可能被未授权读取，为后续横向移动提供信息。",
+      "evidence": [
+        "smbclient -N -L //10.10.0.21  （命令已脱敏，未保存任何文件）",
+        "结果：可列出 shared 目录，读取到 3 个示例文件名（内容未复制）"
+      ],
+      "remediation": "关闭匿名访问，按最小权限配置共享 ACL，并开启访问审计。"
+    },
+    {
+      "id": "F-003",
+      "title": "错误页面返回详细堆栈信息",
+      "severity": "low",
+      "cvss": "",
+      "status": "pending",
+      "asset": "https://app.example.com/search",
+      "mitre": [],
+      "description": "构造异常参数时返回框架堆栈与依赖版本信息。",
+      "impact": "可能帮助攻击者定位组件版本与内部路径，单独不足以造成直接损失。",
+      "evidence": [],
+      "remediation": "生产环境关闭详细错误输出，统一返回自定义错误页。"
+    }
+  ]
+}

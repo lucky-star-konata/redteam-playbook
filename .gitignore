@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+out/
+report.md
+scope.local.json
+findings.local.json
+.DS_Store
