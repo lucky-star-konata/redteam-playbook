@@ -1,5 +1,7 @@
 # redteam-playbook
 
+[![CI](https://github.com/lucky-star-konata/redteam-playbook/actions/workflows/ci.yml/badge.svg)](https://github.com/lucky-star-konata/redteam-playbook/actions/workflows/ci.yml)
+
 一套用于**授权红队评估**的 Agent Skill 与配套工具：把范围确认、执行约束、证据留存、报告输出固化成可执行流程，减少踩线和漏项。
 
 > 仅限书面授权范围内的安全评估。禁止用于未授权目标。详见 [DISCLAIMER](#免责声明)。
